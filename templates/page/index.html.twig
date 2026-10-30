@@ -1,0 +1,104 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Classes{% endblock %}
+
+{% block body %}
+<h1>Classes</h1>
+
+<table id="classes" border="1" cellpadding="6">
+  <thead>
+    <tr><th>ID</th><th>Name</th><th>Instructor</th><th>Capacity</th><th>Starts</th></tr>
+  </thead>
+  <tbody>
+    {# Server-side render on first load. {{ }} auto-escapes output #}
+    {% for c in classes %}
+      <tr>
+        <td>{{ c.id }}</td>
+        <td>{{ c.name }}</td>
+        <td>{{ c.instructor }}</td>
+        <td>{{ c.capacity }}</td>
+        <td>{{ c.startsAt|date('D j M, H:i') }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5">No classes yet</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Add a class</h2>
+<form id="create-form">
+  <input name="name" placeholder="Name" required>
+  <input name="instructor" placeholder="Instructor" required>
+  <input name="capacity" type="number" min="1" placeholder="Capacity" required>
+  <input name="startsAt" type="datetime-local" required>
+  <button>Create</button>
+</form>
+<p id="create-msg"></p>
+
+<h2>Check space</h2>
+<form id="space-form">
+  <input name="id" type="number" min="1" placeholder="Class ID" required>
+  <input name="booked" type="number" min="0" placeholder="Booked" required>
+  <button>Check</button>
+</form>
+<p id="space-msg"></p>
+
+<script>
+const api = '/api/classes';
+
+// GET /api/classes → re-draw the table (textContent, not innerHTML, so no XSS)
+async function loadClasses() {
+  const res = await fetch(api);
+  const rows = await res.json();
+  const tbody = document.querySelector('#classes tbody');
+  tbody.replaceChildren(...rows.map(c => {
+    const tr = document.createElement('tr');
+    for (const v of [c.id, c.name, c.instructor, c.capacity, new Date(c.startsAt).toLocaleString()]) {
+      const td = document.createElement('td');
+      td.textContent = v;
+      tr.append(td);
+    }
+    return tr;
+  }));
+}
+
+// POST /api/classes
+document.getElementById('create-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const msg = document.getElementById('create-msg');
+
+  const res = await fetch(api, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: f.get('name'),
+      instructor: f.get('instructor'),
+      capacity: Number(f.get('capacity')),
+      startsAt: f.get('startsAt'),
+    }),
+  });
+
+  if (res.status === 201) {
+    const { id } = await res.json();
+    msg.textContent = `Created class ${id}`;
+    e.target.reset();
+    loadClasses();
+  } else {
+    msg.textContent = `Failed (${res.status})`;
+  }
+});
+
+// GET /api/classes/{id}/space?booked=n
+document.getElementById('space-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = new FormData(e.target);
+  const msg = document.getElementById('space-msg');
+
+  const res = await fetch(`${api}/${f.get('id')}/space?booked=${f.get('booked')}`);
+  if (res.status === 404) { msg.textContent = 'No class with that ID'; return; }
+  const { hasSpace } = await res.json();
+  msg.textContent = hasSpace ? 'Space available' : 'Class is full';
+});
+</script>
+{% endblock %}
